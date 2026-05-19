@@ -32,6 +32,18 @@ class FaceVerifyRequest(BaseModel):
 class TextEmbedRequest(BaseModel):
     text: str
 
+class RecipeRequest(BaseModel):
+    prompt: str
+
+# predefined blueprints
+RECIPE_BLUEPRINTS = {
+    "pizza": [{"name": "Pizza Dough", "qty": 1}, {"name": "Tomato Sauce", "qty": 1}, {"name": "Mozzarella Cheese", "qty": 2}],
+    "pasta": [{"name": "Pasta", "qty": 1}, {"name": "Pasta Sauce", "qty": 1}, {"name": "Parmesan", "qty": 1}],
+    "salad": [{"name": "Lettuce", "qty": 1}, {"name": "Tomatoes", "qty": 2}, {"name": "Cucumber", "qty": 1}, {"name": "Salad Dressing", "qty": 1}],
+    "tea": [{"name": "Tea Leaves", "qty": 1}, {"name": "Milk", "qty": 1}, {"name": "Sugar", "qty": 1}],
+    "coffee": [{"name": "Coffee Beans", "qty": 1}, {"name": "Milk", "qty": 1}, {"name": "Sugar", "qty": 1}],
+}
+
 def decode_image(base64_str: str) -> np.ndarray:
     try:
         if ',' in base64_str:
@@ -94,6 +106,39 @@ def verify_face(req: FaceVerifyRequest):
 def encode_text(req: TextEmbedRequest):
     embedding = embedding_model.encode(req.text)
     return {"embedding": embedding.tolist()}
+
+import re
+@app.post("/api/ai/recipe")
+def parse_recipe(req: RecipeRequest):
+    prompt_lower = req.prompt.lower()
+    
+    match = re.search(r'for (\d+)', prompt_lower)
+    people = int(match.group(1)) if match else 2
+    
+    scale_factor = max(1, people // 2)
+    
+    prompt_emb = embedding_model.encode(prompt_lower)
+    best_blueprint = None
+    best_score = -1
+    
+    for key in RECIPE_BLUEPRINTS.keys():
+        key_emb = embedding_model.encode(key)
+        score = np.dot(prompt_emb, key_emb) / (np.linalg.norm(prompt_emb) * np.linalg.norm(key_emb))
+        if score > best_score:
+            best_score = score
+            best_blueprint = key
+            
+    if best_score < 0.3 or not best_blueprint:
+        raise HTTPException(status_code=400, detail="Could not understand recipe intent.")
+        
+    items = []
+    for item in RECIPE_BLUEPRINTS[best_blueprint]:
+        items.append({
+            "name": item["name"],
+            "quantity": item["qty"] * scale_factor
+        })
+        
+    return {"recipe": best_blueprint, "people": people, "items": items}
 
 if __name__ == "__main__":
     import uvicorn

@@ -70,3 +70,61 @@ exports.searchProducts = async (req, res) => {
     res.status(500).json({ message: 'Server Error' });
   }
 };
+
+exports.seedSimilarProducts = async () => {
+  try {
+    const products = await Product.find({});
+    const session = getNeo4jSession();
+    
+    // Ensure nodes exist
+    for (const p of products) {
+      await session.run(`
+        MERGE (n:Product {id: $id})
+        SET n.category = $category, n.name = $name
+      `, { id: p._id.toString(), category: p.category || 'general', name: p.name });
+    }
+    
+    // Link similar
+    await session.run(`
+      MATCH (p1:Product), (p2:Product)
+      WHERE p1.id <> p2.id AND p1.category = p2.category
+      MERGE (p1)-[:SIMILAR_TO]-(p2)
+    `);
+    
+    await session.close();
+    console.log('Neo4j SIMILAR_TO relationships seeded.');
+  } catch (err) {
+    console.error('Error seeding Neo4j:', err);
+  }
+};
+
+exports.getRecommendations = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const session = getNeo4jSession();
+    
+    const similarRes = await session.run(`
+      MATCH (p:Product {id: $id})-[:SIMILAR_TO]-(rec:Product)
+      RETURN rec.id AS recId LIMIT 3
+    `, { id });
+    
+    const boughtRes = await session.run(`
+      MATCH (p:Product {id: $id})-[r:BOUGHT_WITH]-(rec:Product)
+      RETURN rec.id AS recId, r.weight AS weight
+      ORDER BY weight DESC LIMIT 3
+    `, { id });
+    
+    await session.close();
+    
+    const similarIds = similarRes.records.map(r => r.get('recId'));
+    const boughtIds = boughtRes.records.map(r => r.get('recId'));
+    
+    const similarProducts = await Product.find({ _id: { $in: similarIds } });
+    const boughtProducts = await Product.find({ _id: { $in: boughtIds } });
+    
+    res.json({ similar: similarProducts, boughtWith: boughtProducts });
+  } catch (error) {
+    console.error('Recommendation Error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};

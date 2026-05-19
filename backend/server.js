@@ -15,12 +15,15 @@ const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const cartRoutes = require('./routes/cartRoutes');
+const { seedSimilarProducts } = require('./controllers/productController');
 
 // Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/cart', cartRoutes);
 
 // Basic Route
 app.get('/', (req, res) => {
@@ -32,6 +35,7 @@ const startServer = async () => {
   try {
     await connectMongoDB();
     await connectNeo4j();
+    await seedSimilarProducts();
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
