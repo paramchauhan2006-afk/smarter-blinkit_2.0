@@ -31,9 +31,29 @@ const connectNeo4j = async () => {
     );
     await neo4jDriver.verifyConnectivity();
     console.log('Neo4j connected successfully');
+    await initializeNeo4jIndexes();
   } catch (error) {
     console.error('Neo4j connection error:', error);
     // process.exit(1); // Optional: don't exit if Neo4j is not strictly required initially
+  }
+};
+
+const initializeNeo4jIndexes = async () => {
+  const session = neo4jDriver.session();
+  try {
+    await session.run(`
+      CREATE VECTOR INDEX product_embedding IF NOT EXISTS
+      FOR (p:Product) ON (p.embedding)
+      OPTIONS { indexConfig: {
+        \`vector.dimensions\`: 384,
+        \`vector.similarity_function\`: 'cosine'
+      }}
+    `);
+    console.log('Neo4j vector index initialized');
+  } catch (error) {
+    console.error('Failed to initialize Neo4j indexes:', error);
+  } finally {
+    await session.close();
   }
 };
 
