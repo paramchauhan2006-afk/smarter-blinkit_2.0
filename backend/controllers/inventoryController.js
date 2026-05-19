@@ -20,7 +20,7 @@ exports.updateInventoryByBarcode = async (req, res) => {
     }
 
     await store.save();
-    res.json({ message: 'Inventory updated successfully', inventory: store.inventory });
+    res.json({ message: 'Inventory updated successfully', product, inventory: store.inventory });
   } catch (error) {
     console.error('Inventory Error:', error.message);
     res.status(500).json({ message: 'Server Error' });

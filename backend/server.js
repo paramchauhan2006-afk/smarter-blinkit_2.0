@@ -1,10 +1,40 @@
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 require('dotenv').config({ path: '../.env' });
 const { connectMongoDB, connectNeo4j } = require('./config/db');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+app.set('io', io);
+
 const PORT = process.env.PORT || 5000;
+
+// Socket metrics
+let activeUsers = 0;
+
+io.on('connection', (socket) => {
+  activeUsers++;
+  io.emit('global_metrics_update', { activeUsers });
+  
+  socket.on('join_store', (storeId) => {
+    socket.join(`room_${storeId}`);
+    console.log(`Socket joined store room: ${storeId}`);
+  });
+
+  socket.on('disconnect', () => {
+    activeUsers--;
+    io.emit('global_metrics_update', { activeUsers });
+  });
+});
 
 // Middleware
 app.use(cors());
@@ -36,7 +66,7 @@ const startServer = async () => {
     await connectMongoDB();
     await connectNeo4j();
     await seedSimilarProducts();
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
   } catch (error) {

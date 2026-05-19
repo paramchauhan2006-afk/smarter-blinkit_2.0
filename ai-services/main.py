@@ -35,6 +35,9 @@ class TextEmbedRequest(BaseModel):
 class RecipeRequest(BaseModel):
     prompt: str
 
+class PairingRequest(BaseModel):
+    target_item: str
+
 # predefined blueprints
 RECIPE_BLUEPRINTS = {
     "pizza": [{"name": "Pizza Dough", "qty": 1}, {"name": "Tomato Sauce", "qty": 1}, {"name": "Mozzarella Cheese", "qty": 2}],
@@ -139,6 +142,44 @@ def parse_recipe(req: RecipeRequest):
         })
         
     return {"recipe": best_blueprint, "people": people, "items": items}
+
+# Pre-defined associations simulating Apriori Support/Confidence Market Basket Rules
+ASSOCIATION_RULES = {
+    "chips": ["soda", "dip", "salsa", "cookies"],
+    "bread": ["butter", "eggs", "milk", "jam"],
+    "milk": ["bread", "eggs", "cereal", "coffee"],
+    "pizza": ["soda", "ice cream", "garlic bread"],
+    "pasta": ["cheese", "wine", "tomato sauce"]
+}
+
+@app.post("/api/ai/predict-pairing")
+def predict_pairing(req: PairingRequest):
+    target = req.target_item.lower()
+    
+    # Check strict rules first
+    predictions = []
+    for key, pairs in ASSOCIATION_RULES.items():
+        if key in target:
+            predictions.extend(pairs)
+    
+    # If no strict rule matched, use embeddings to find closest category rule
+    if not predictions:
+        target_emb = embedding_model.encode(target)
+        best_score = -1
+        best_match = None
+        for key in ASSOCIATION_RULES.keys():
+            key_emb = embedding_model.encode(key)
+            score = np.dot(target_emb, key_emb) / (np.linalg.norm(target_emb) * np.linalg.norm(key_emb))
+            if score > best_score:
+                best_score = score
+                best_match = key
+        
+        if best_score > 0.4 and best_match:
+            predictions.extend(ASSOCIATION_RULES[best_match])
+        else:
+            predictions = ["chips", "soda", "chocolate"] # Fallback generic pairings
+
+    return {"predictions": list(set(predictions))[:3]}
 
 if __name__ == "__main__":
     import uvicorn

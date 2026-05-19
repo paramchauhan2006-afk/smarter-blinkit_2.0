@@ -105,7 +105,9 @@ const BuyerDashboard = () => {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
-              cartItems: cart
+              cartItems: cart,
+              lat: location ? location.lat : null,
+              lng: location ? location.lng : null
             });
             alert('Payment Successful!');
             setCart([]);

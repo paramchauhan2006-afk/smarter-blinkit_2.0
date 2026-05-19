@@ -72,9 +72,10 @@ exports.searchProducts = async (req, res) => {
 };
 
 exports.seedSimilarProducts = async () => {
+  let session;
   try {
     const products = await Product.find({});
-    const session = getNeo4jSession();
+    session = getNeo4jSession();
     
     // Ensure nodes exist
     for (const p of products) {
@@ -91,17 +92,19 @@ exports.seedSimilarProducts = async () => {
       MERGE (p1)-[:SIMILAR_TO]-(p2)
     `);
     
-    await session.close();
     console.log('Neo4j SIMILAR_TO relationships seeded.');
   } catch (err) {
     console.error('Error seeding Neo4j:', err);
+  } finally {
+    if (session) await session.close();
   }
 };
 
 exports.getRecommendations = async (req, res) => {
   const { id } = req.params;
+  let session;
   try {
-    const session = getNeo4jSession();
+    session = getNeo4jSession();
     
     const similarRes = await session.run(`
       MATCH (p:Product {id: $id})-[:SIMILAR_TO]-(rec:Product)
@@ -114,8 +117,6 @@ exports.getRecommendations = async (req, res) => {
       ORDER BY weight DESC LIMIT 3
     `, { id });
     
-    await session.close();
-    
     const similarIds = similarRes.records.map(r => r.get('recId'));
     const boughtIds = boughtRes.records.map(r => r.get('recId'));
     
@@ -126,5 +127,35 @@ exports.getRecommendations = async (req, res) => {
   } catch (error) {
     console.error('Recommendation Error:', error);
     res.status(500).json({ message: 'Server Error' });
+  } finally {
+    if (session) await session.close();
+  }
+};
+
+exports.getLeaderboard = async (req, res) => {
+  try {
+    const topProducts = await Product.find().sort({ salesCount: -1 }).limit(3);
+    const topStores = await Store.find().sort({ rating: -1 }).limit(3);
+    res.json({ products: topProducts, stores: topStores });
+  } catch (error) {
+    console.error('Leaderboard Error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+exports.getPairingPrediction = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const product = await Product.findById(id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    
+    const aiRes = await axios.post(`${process.env.FASTAPI_URL || 'http://localhost:8000'}/api/ai/predict-pairing`, {
+      target_item: product.name
+    });
+    
+    res.json({ predictions: aiRes.data.predictions });
+  } catch (err) {
+    console.error('AI Pairing Error:', err.message);
+    res.status(500).json({ message: 'Failed to predict pairing' });
   }
 };

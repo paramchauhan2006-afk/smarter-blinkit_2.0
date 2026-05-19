@@ -11,7 +11,8 @@ const storeSchema = new mongoose.Schema({
     productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
     barcode: { type: String },
     stock: { type: Number, default: 0 }
-  }]
+  }],
+  rating: { type: Number, default: 4.5 }
 }, { timestamps: true });
 
 storeSchema.index({ location: '2dsphere' });
