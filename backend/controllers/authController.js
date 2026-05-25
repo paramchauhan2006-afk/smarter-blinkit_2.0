@@ -38,10 +38,14 @@ exports.register = async (req, res) => {
 };
 
 exports.loginWithFace = async (req, res) => {
-  const { imageBase64 } = req.body;
+  const { imageBase64, role } = req.body;
   try {
-    const users = await User.find({ faceEncoding: { $exists: true, $not: { $size: 0 } } });
-    if (users.length === 0) return res.status(400).json({ message: 'No users with face encodings found' });
+    const filter = { faceEncoding: { $exists: true, $not: { $size: 0 } } };
+    if (role) {
+      filter.role = role;
+    }
+    const users = await User.find(filter);
+    if (users.length === 0) return res.status(400).json({ message: `No users registered as ${role || 'buyer/seller'} with face encodings found` });
 
     const encodings = users.map(u => u.faceEncoding);
     
@@ -64,10 +68,13 @@ exports.loginWithFace = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
   try {
     const user = await User.findOne({ email });
     if (user && (await bcrypt.compare(password, user.password))) {
+      if (role && user.role !== role) {
+        return res.status(401).json({ message: `Access denied: User is not registered as a ${role}` });
+      }
       res.json({
         _id: user.id, name: user.name, email: user.email, role: user.role, token: generateToken(user.id)
       });

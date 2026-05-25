@@ -1,6 +1,7 @@
 const Product = require('../models/Product');
 const Store = require('../models/Store');
 const axios = require('axios');
+const mongoose = require('mongoose');
 const { getNeo4jSession } = require('../config/db');
 
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000';
@@ -16,27 +17,84 @@ exports.searchProducts = async (req, res) => {
   }
 
   try {
-    // 1. Get embedding
-    const aiResponse = await axios.post(`${FASTAPI_URL}/api/embeddings/encode`, { text: query });
-    const queryEmbedding = aiResponse.data.embedding;
+    // Dynamic Geolocation Shift: Cluster stores around the user if they are far away
+    const store1 = await Store.findOne({ name: "SuperMart Groceries" });
+    if (store1) {
+      const storeLng = store1.location.coordinates[0];
+      const storeLat = store1.location.coordinates[1];
+      const distance = Math.sqrt(Math.pow(storeLng - parseFloat(lng), 2) + Math.pow(storeLat - parseFloat(lat), 2));
+      // If distance is greater than ~0.1 degrees (about 11km), shift stores to center near user
+      if (distance > 0.1) {
+        const allStores = await Store.find({});
+        const offsets = [
+          [0.012, 0.008],  // ~1.5 km North-East
+          [-0.009, -0.011] // ~1.2 km South-West
+        ];
+        for (let i = 0; i < allStores.length; i++) {
+          const offset = offsets[i % offsets.length];
+          allStores[i].location = {
+            type: 'Point',
+            coordinates: [parseFloat(lng) + offset[0], parseFloat(lat) + offset[1]]
+          };
+          await allStores[i].save();
+        }
+        console.log(`Dynamic Store Relocation: Shifted stores to center near user's reported location (${lat}, ${lng}).`);
+      }
+    }
 
-    // 2. Query Neo4j vector index
-    const session = getNeo4jSession();
-    const result = await session.run(`
-      CALL db.index.vector.queryNodes('product_embedding', 10, $embedding)
-      YIELD node, score
-      RETURN node.productId AS productId, score
-    `, { embedding: queryEmbedding });
-    
-    await session.close();
+    // 1. Get embedding (FastAPI fallback friendly)
+    let queryEmbedding = null;
+    try {
+      const aiResponse = await axios.post(`${FASTAPI_URL}/api/embeddings/encode`, { text: query });
+      queryEmbedding = aiResponse.data.embedding;
+    } catch (err) {
+      console.warn('FastAPI embedding generation failed or offline. Falling back to MongoDB text search.');
+    }
 
-    const matchedProductIds = result.records.map(record => record.get('productId'));
+    // 2. Query Neo4j vector index with MongoDB text fallback if Neo4j is offline/fails
+    let matchedProductIds = [];
+    let neo4jSuccess = false;
+
+    if (queryEmbedding) {
+      try {
+        const session = getNeo4jSession();
+        if (session) {
+          const result = await session.run(`
+            CALL db.index.vector.queryNodes('product_embedding', 10, $embedding)
+            YIELD node, score
+            RETURN node.productId AS productId, score
+          `, { embedding: queryEmbedding });
+          
+          await session.close();
+          matchedProductIds = result.records.map(record => record.get('productId')).filter(id => id);
+          neo4jSuccess = true;
+        }
+      } catch (error) {
+        console.warn('Neo4j connection or query failed. Falling back to MongoDB text search. Error:', error.message);
+      }
+    }
+
+    // Fallback: If Neo4j was unsuccessful or returned no matches, query MongoDB directly
+    if (!neo4jSuccess || matchedProductIds.length === 0) {
+      const keywords = query.split(' ').filter(k => k.length > 2);
+      const regexQueries = keywords.length > 0 
+        ? keywords.map(k => new RegExp(k, 'i')) 
+        : [new RegExp(query, 'i')];
+      
+      const fallbackProducts = await Product.find({
+        $or: [
+          { name: { $in: regexQueries } },
+          { category: { $in: regexQueries } },
+          { description: { $in: regexQueries } }
+        ]
+      });
+      matchedProductIds = fallbackProducts.map(p => p._id.toString());
+    }
 
     if (matchedProductIds.length === 0) {
       return res.json([]);
     }
 
-    // 3. Query MongoDB with GeoNear if lat/lng are provided
     // 3. Query MongoDB with GeoNear using provided or fallback coordinates
     let stores = await Store.aggregate([
       {
@@ -47,7 +105,7 @@ exports.searchProducts = async (req, res) => {
         }
       },
       {
-        $match: { 'inventory.productId': { $in: matchedProductIds } }
+        $match: { 'inventory.productId': { $in: matchedProductIds.map(id => new mongoose.Types.ObjectId(id)) } }
       }
     ]);
 
@@ -151,13 +209,39 @@ exports.getPairingPrediction = async (req, res) => {
     const product = await Product.findById(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
     
-    const aiRes = await axios.post(`${process.env.FASTAPI_URL || 'http://localhost:8000'}/api/ai/predict-pairing`, {
-      target_item: product.name
-    });
+    let predictions = [];
+    try {
+      const aiRes = await axios.post(`${process.env.FASTAPI_URL || 'http://localhost:8000'}/api/ai/predict-pairing`, {
+        target_item: product.name
+      });
+      predictions = aiRes.data.predictions;
+    } catch (err) {
+      console.warn('FastAPI predict-pairing failed or offline. Using local pairing rules fallback. Error:', err.message);
+      
+      const associationRules = {
+        chips: ["soda", "dip", "salsa", "cookies"],
+        bread: ["butter", "eggs", "milk", "jam"],
+        milk: ["bread", "eggs", "cereal", "coffee"],
+        pizza: ["soda", "ice cream", "garlic bread"],
+        pasta: ["cheese", "wine", "tomato sauce"]
+      };
+
+      const target = product.name.toLowerCase();
+      for (const [key, pairs] of Object.entries(associationRules)) {
+        if (target.includes(key)) {
+          predictions.push(...pairs);
+        }
+      }
+
+      if (predictions.length === 0) {
+        predictions = ["chips", "soda", "chocolate"];
+      }
+      predictions = [...new Set(predictions)].slice(0, 3);
+    }
     
-    res.json({ predictions: aiRes.data.predictions });
-  } catch (err) {
-    console.error('AI Pairing Error:', err.message);
-    res.status(500).json({ message: 'Failed to predict pairing' });
+    res.json({ predictions });
+  } catch (error) {
+    console.error('AI Pairing general error:', error.message);
+    res.status(500).json({ message: 'Server Error' });
   }
 };

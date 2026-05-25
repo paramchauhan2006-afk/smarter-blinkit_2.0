@@ -90,7 +90,12 @@ def encode_face(req: FaceEncodeRequest):
     if not encodings:
         raise HTTPException(status_code=400, detail="Could not encode face")
         
-    return {"encoding": encodings[0].tolist()}
+    encoding = encodings[0]
+    if hasattr(encoding, "tolist"):
+        encoding = encoding.tolist()
+    else:
+        encoding = list(encoding)
+    return {"encoding": encoding}
 
 @app.post("/api/face/verify")
 def verify_face(req: FaceVerifyRequest):
@@ -107,7 +112,13 @@ def verify_face(req: FaceVerifyRequest):
         raise HTTPException(status_code=400, detail="Could not encode face")
         
     unknown_encoding = encodings[0]
-    known_encs = [np.array(e) for e in req.known_encodings]
+    if not isinstance(unknown_encoding, np.ndarray):
+        unknown_encoding = np.array(unknown_encoding)
+
+    known_encs = []
+    for e in req.known_encodings:
+        if e and isinstance(e, list) and len(e) == 128:
+            known_encs.append(np.array(e))
     
     if not known_encs:
         return {"match_index": -1, "distance": 1.0}

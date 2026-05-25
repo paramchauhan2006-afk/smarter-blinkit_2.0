@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { updateInventoryByBarcode } = require('../controllers/inventoryController');
+const { updateInventoryByBarcode, getSellerStore } = require('../controllers/inventoryController');
+const { protect, verifySeller } = require('../middleware/authMiddleware');
 
-router.post('/barcode', updateInventoryByBarcode);
+router.get('/store', protect, verifySeller, getSellerStore);
+router.post('/barcode', protect, verifySeller, updateInventoryByBarcode);
 
 module.exports = router;
