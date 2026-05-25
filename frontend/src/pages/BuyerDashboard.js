@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE } from '../config';
 
 const BuyerDashboard = () => {
   const [query, setQuery] = useState('');
@@ -166,7 +167,7 @@ const BuyerDashboard = () => {
     
     setLoading(true);
     try {
-      let url = `http://localhost:5000/api/products/search?query=${encodeURIComponent(activeQuery)}`;
+      let url = `${API_BASE}/api/products/search?query=${encodeURIComponent(activeQuery)}`;
       if (location) {
         url += `&lat=${location.lat}&lng=${location.lng}`;
       }
@@ -198,7 +199,7 @@ const BuyerDashboard = () => {
     setRecipeLoading(true);
     setRecipeResults([]);
     try {
-      const res = await axios.post('http://localhost:5000/api/cart/recipe', {
+      const res = await axios.post(`${API_BASE}/api/cart/recipe`, {
         prompt: recipePrompt,
         lat: location.lat,
         lng: location.lng
@@ -366,7 +367,7 @@ const BuyerDashboard = () => {
     if (paymentMethod === 'cod') {
       try {
         // Dynamic order creation with dummy payment variables to decrement stocks in DB
-        const { data: order } = await axios.post('http://localhost:5000/api/orders/create', { 
+        const { data: order } = await axios.post(`${API_BASE}/api/orders/create`, { 
           amount, 
           cartItems: cart 
         }, {
@@ -376,7 +377,7 @@ const BuyerDashboard = () => {
         // Simulate delivery connector delay
         setTimeout(async () => {
           try {
-            await axios.post('http://localhost:5000/api/orders/verify', {
+            await axios.post(`${API_BASE}/api/orders/verify`, {
               razorpay_order_id: order.id || `dummy_cod_${Date.now()}`,
               razorpay_payment_id: `pay_dummy_${Math.floor(Math.random() * 100000)}`,
               razorpay_signature: 'dummy_signature',
@@ -419,7 +420,7 @@ const BuyerDashboard = () => {
     } else {
       // Razorpay checkout
       try {
-        const { data: order } = await axios.post('http://localhost:5000/api/orders/create', { 
+        const { data: order } = await axios.post(`${API_BASE}/api/orders/create`, { 
           amount, 
           cartItems: cart 
         }, {
@@ -435,7 +436,7 @@ const BuyerDashboard = () => {
           order_id: order.id,
           handler: async function (response) {
             try {
-              await axios.post('http://localhost:5000/api/orders/verify', {
+              await axios.post(`${API_BASE}/api/orders/verify`, {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
@@ -495,7 +496,7 @@ const BuyerDashboard = () => {
     setRecommendations({ similar: [], boughtWith: [] });
     setRecommendationLoading(true);
     try {
-      const res = await axios.get(`http://localhost:5000/api/products/${item.product._id}/recommendations`, {
+      const res = await axios.get(`${API_BASE}/api/products/${item.product._id}/recommendations`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setRecommendations(res.data);

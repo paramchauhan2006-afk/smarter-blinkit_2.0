@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import axios from 'axios';
+import { API_BASE } from '../config';
 
 const Login = () => {
   const [role, setRole] = useState('buyer');
@@ -29,7 +30,7 @@ const Login = () => {
     
     setIsLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login/face', {
+      const res = await axios.post(`${API_BASE}/api/auth/login/face`, {
         imageBase64: imageSrc,
         role: role
       });
@@ -54,7 +55,7 @@ const Login = () => {
         if (isFaceLogin && webcamRef.current) {
           imageBase64 = webcamRef.current.getScreenshot();
         }
-        const res = await axios.post('http://localhost:5000/api/auth/register', {
+        const res = await axios.post(`${API_BASE}/api/auth/register`, {
           name, email, password, role, imageBase64
         });
         localStorage.setItem('token', res.data.token);
@@ -64,7 +65,7 @@ const Login = () => {
           navigate(role === 'buyer' ? '/buyer-dashboard' : '/seller-dashboard');
         }, 1000);
       } else {
-        const res = await axios.post('http://localhost:5000/api/auth/login', {
+        const res = await axios.post(`${API_BASE}/api/auth/login`, {
           email, password, role
         });
         localStorage.setItem('token', res.data.token);

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import axios from 'axios';
 import io from 'socket.io-client';
+import { API_BASE } from '../config';
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const COLORS = ['#f8cb46', '#22c55e', '#ef4444', '#3b82f6', '#f97316'];
@@ -40,7 +41,7 @@ const SellerDashboard = () => {
 
   const fetchSellerStore = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/inventory/store', {
+      const res = await axios.get(`${API_BASE}/api/inventory/store`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStore(res.data);
@@ -59,7 +60,7 @@ const SellerDashboard = () => {
   useEffect(() => {
     if (!store) return;
 
-    const socket = io('http://localhost:5000');
+    const socket = io(API_BASE);
     
     socket.on('connect', () => {
       socket.emit('join_store', store._id);
@@ -90,7 +91,7 @@ const SellerDashboard = () => {
   const fetchLeaderboard = async () => {
     setLeaderboardLoading(true);
     try {
-      const res = await axios.get('http://localhost:5000/api/products/leaderboard', {
+      const res = await axios.get(`${API_BASE}/api/products/leaderboard`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setLeaderboard(res.data);
@@ -102,7 +103,7 @@ const SellerDashboard = () => {
 
   const fetchMoneyMap = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/orders/analytics/money-map', {
+      const res = await axios.get(`${API_BASE}/api/orders/analytics/money-map`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMoneyMapData(res.data);
@@ -138,7 +139,7 @@ const SellerDashboard = () => {
     if (!barcode) return;
     setInventoryLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/api/inventory/barcode', {
+      const res = await axios.post(`${API_BASE}/api/inventory/barcode`, {
         barcode,
         storeId: store?._id,
         incrementBy: 1
@@ -161,7 +162,7 @@ const SellerDashboard = () => {
   const fetchPairings = async (productId) => {
     setPredictionLoading(true);
     try {
-      const res = await axios.get(`http://localhost:5000/api/products/${productId}/predict-pairing`, {
+      const res = await axios.get(`${API_BASE}/api/products/${productId}/predict-pairing`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAiPredictions(res.data.predictions);
