@@ -11,6 +11,8 @@ const BuyerDashboard = () => {
   const [recipeLoading, setRecipeLoading] = useState(false);
   const [expandedProduct, setExpandedProduct] = useState(null);
   const [recommendations, setRecommendations] = useState({ similar: [], boughtWith: [] });
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -89,6 +91,7 @@ const BuyerDashboard = () => {
     if (cart.length === 0) return alert('Cart is empty!');
     const amount = cart.reduce((total, item) => total + item.product.price, 0);
 
+    setCheckoutLoading(true);
     try {
       const { data: order } = await axios.post('http://localhost:5000/api/orders/create', { amount, cartItems: cart });
 
@@ -119,10 +122,15 @@ const BuyerDashboard = () => {
       };
 
       const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response){
+        alert('Payment failed');
+      });
       rzp.open();
+      setCheckoutLoading(false);
     } catch (err) {
       console.error(err);
       alert('Failed to initiate checkout.');
+      setCheckoutLoading(false);
     }
   };
 
@@ -133,12 +141,14 @@ const BuyerDashboard = () => {
     }
     setExpandedProduct(item.product._id);
     setRecommendations({ similar: [], boughtWith: [] });
+    setRecommendationLoading(true);
     try {
       const res = await axios.get(`http://localhost:5000/api/products/${item.product._id}/recommendations`);
       setRecommendations(res.data);
     } catch (err) {
       console.error('Recommendations error', err);
     }
+    setRecommendationLoading(false);
   };
 
   return (
@@ -220,39 +230,47 @@ const BuyerDashboard = () => {
                 <div className="bg-yellow-50 p-4 border-t border-yellow-200 shadow-inner">
                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 text-center">Smart Recommendations</h4>
                   
-                  {recommendations.boughtWith.length > 0 && (
-                    <div className="mb-4">
-                      <p className="text-sm font-bold text-secondary mb-2">Frequently Bought Together</p>
-                      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                        {recommendations.boughtWith.map(rec => (
-                          <div key={rec._id} className="min-w-[130px] bg-white p-3 rounded-xl border border-gray-100 flex flex-col items-center text-center shadow-sm">
-                            <span className="text-3xl mb-2">📦</span>
-                            <p className="text-xs font-bold truncate w-full text-gray-800">{rec.name}</p>
-                            <p className="text-xs text-gray-500 mb-2 font-bold">₹{rec.price}</p>
-                            <button onClick={() => addToCart({product: rec, store: item.store})} className="text-xs bg-primary text-black px-3 py-1.5 rounded-lg font-bold w-full hover:bg-yellow-400 transition-colors">Add</button>
-                          </div>
-                        ))}
-                      </div>
+                  {recommendationLoading ? (
+                    <div className="flex justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-secondary"></div>
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      {recommendations.boughtWith.length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-sm font-bold text-secondary mb-2">Frequently Bought Together</p>
+                          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                            {recommendations.boughtWith.map(rec => (
+                              <div key={rec._id} className="min-w-[130px] bg-white p-3 rounded-xl border border-gray-100 flex flex-col items-center text-center shadow-sm">
+                                <span className="text-3xl mb-2">📦</span>
+                                <p className="text-xs font-bold truncate w-full text-gray-800">{rec.name}</p>
+                                <p className="text-xs text-gray-500 mb-2 font-bold">₹{rec.price}</p>
+                                <button onClick={() => addToCart({product: rec, store: item.store})} className="text-xs bg-primary text-black px-3 py-1.5 rounded-lg font-bold w-full hover:bg-yellow-400 transition-colors">Add</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                  {recommendations.similar.length > 0 && (
-                    <div>
-                      <p className="text-sm font-bold text-secondary mb-2">Similar Items</p>
-                      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                        {recommendations.similar.map(rec => (
-                          <div key={rec._id} className="min-w-[130px] bg-white p-3 rounded-xl border border-gray-100 flex flex-col items-center text-center shadow-sm">
-                            <span className="text-3xl mb-2">🏷️</span>
-                            <p className="text-xs font-bold truncate w-full text-gray-800">{rec.name}</p>
-                            <p className="text-xs text-gray-500 mb-2 font-bold">₹{rec.price}</p>
-                            <button onClick={() => addToCart({product: rec, store: item.store})} className="text-xs bg-secondary text-white px-3 py-1.5 rounded-lg font-bold w-full hover:bg-accent transition-colors">Add</button>
+                      {recommendations.similar.length > 0 && (
+                        <div>
+                          <p className="text-sm font-bold text-secondary mb-2">Similar Items</p>
+                          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                            {recommendations.similar.map(rec => (
+                              <div key={rec._id} className="min-w-[130px] bg-white p-3 rounded-xl border border-gray-100 flex flex-col items-center text-center shadow-sm">
+                                <span className="text-3xl mb-2">🏷️</span>
+                                <p className="text-xs font-bold truncate w-full text-gray-800">{rec.name}</p>
+                                <p className="text-xs text-gray-500 mb-2 font-bold">₹{rec.price}</p>
+                                <button onClick={() => addToCart({product: rec, store: item.store})} className="text-xs bg-secondary text-white px-3 py-1.5 rounded-lg font-bold w-full hover:bg-accent transition-colors">Add</button>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {recommendations.similar.length === 0 && recommendations.boughtWith.length === 0 && (
-                    <p className="text-xs text-gray-500 text-center italic py-4">No specific recommendations yet. Add items to cart and checkout to train the AI!</p>
+                        </div>
+                      )}
+                      {recommendations.similar.length === 0 && recommendations.boughtWith.length === 0 && (
+                        <p className="text-xs text-gray-500 text-center italic py-4">No specific recommendations yet. Add items to cart and checkout to train the AI!</p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -292,9 +310,10 @@ const BuyerDashboard = () => {
             </div>
             <button 
               onClick={handleCheckout}
-              className="w-full bg-secondary text-white py-3 rounded-lg font-bold mt-4 hover:bg-accent transition-colors shadow-md"
+              disabled={checkoutLoading}
+              className={`w-full bg-secondary text-white py-3 rounded-lg font-bold mt-4 hover:bg-accent transition-colors shadow-md ${checkoutLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              Proceed to Pay
+              {checkoutLoading ? 'Processing...' : 'Proceed to Pay'}
             </button>
           </div>
         )}

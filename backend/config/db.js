@@ -12,8 +12,9 @@ const connectMongoDB = async () => {
     });
     console.log('MongoDB connected successfully');
   } catch (error) {
-    console.error('MongoDB connection error:', error);
-    process.exit(1);
+    console.error('MongoDB connection error:', error.message);
+    console.log('Retrying MongoDB connection in 5 seconds...');
+    setTimeout(connectMongoDB, 5000);
   }
 };
 
@@ -33,8 +34,8 @@ const connectNeo4j = async () => {
     console.log('Neo4j connected successfully');
     await initializeNeo4jIndexes();
   } catch (error) {
-    console.error('Neo4j connection error:', error);
-    // process.exit(1); // Optional: don't exit if Neo4j is not strictly required initially
+    console.error('Neo4j connection error:', error.message);
+    console.log('Continuing without Neo4j. Features relying on Neo4j will be disabled.');
   }
 };
 
@@ -58,10 +59,15 @@ const initializeNeo4jIndexes = async () => {
 };
 
 const getNeo4jSession = () => {
-  if (!neo4jDriver) {
-    throw new Error('Neo4j driver not initialized');
+  try {
+    if (!neo4jDriver) {
+      throw new Error('Neo4j driver not initialized');
+    }
+    return neo4jDriver.session();
+  } catch (error) {
+    console.error('Error getting Neo4j session:', error.message);
+    return null;
   }
-  return neo4jDriver.session();
 };
 
 module.exports = { connectMongoDB, connectNeo4j, getNeo4jSession };

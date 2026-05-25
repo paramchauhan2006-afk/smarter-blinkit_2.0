@@ -57,12 +57,13 @@ exports.verifyPayment = async (req, res) => {
         const subOrders = Object.values(storeGroups);
 
         let deliveryLocation = undefined;
-        if (lat && lng) {
-          deliveryLocation = {
-            type: 'Point',
-            coordinates: [parseFloat(lng), parseFloat(lat)]
-          };
-        }
+        let finalLat = lat ? parseFloat(lat) : 26.8631;
+        let finalLng = lng ? parseFloat(lng) : 75.8105;
+
+        deliveryLocation = {
+          type: 'Point',
+          coordinates: [finalLng, finalLat]
+        };
 
         // Save Order
         const newOrder = await Order.create({

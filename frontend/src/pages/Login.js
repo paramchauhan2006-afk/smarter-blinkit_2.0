@@ -10,6 +10,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [isRegister, setIsRegister] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const webcamRef = useRef(null);
   const navigate = useNavigate();
 
@@ -17,6 +18,7 @@ const Login = () => {
     const imageSrc = webcamRef.current?.getScreenshot();
     if (!imageSrc) return alert('Camera not ready!');
     
+    setIsLoading(true);
     try {
       const res = await axios.post('http://localhost:5000/api/auth/login/face', {
         imageBase64: imageSrc
@@ -27,10 +29,12 @@ const Login = () => {
     } catch (err) {
       alert(err.response?.data?.message || 'Face login failed');
     }
+    setIsLoading(false);
   }, [webcamRef, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
     try {
       if (isRegister) {
         let imageBase64 = null;
@@ -54,6 +58,7 @@ const Login = () => {
     } catch (err) {
       alert(err.response?.data?.message || 'Authentication failed');
     }
+    setIsLoading(false);
   };
 
   return (
@@ -96,9 +101,10 @@ const Login = () => {
           {!isRegister && (
             <button 
               onClick={handleFaceLogin}
-              className="mt-4 w-full bg-secondary text-white py-3 rounded-lg font-bold hover:bg-accent transition-colors shadow-md"
+              disabled={isLoading}
+              className={`mt-4 w-full bg-secondary text-white py-3 rounded-lg font-bold shadow-md transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent'}`}
             >
-              Login with Face ID
+              {isLoading ? 'Scanning Face...' : 'Login with Face ID'}
             </button>
           )}
         </div>
@@ -120,8 +126,8 @@ const Login = () => {
             type="password" placeholder="Password" required value={password} onChange={e => setPassword(e.target.value)}
             className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:outline-none"
           />
-          <button type="submit" className="w-full bg-primary text-black py-3 rounded-lg font-bold text-lg hover:bg-yellow-400 transition-colors shadow-md">
-            {isRegister ? 'Sign Up' : 'Login'}
+          <button type="submit" disabled={isLoading} className={`w-full bg-primary text-black py-3 rounded-lg font-bold text-lg shadow-md transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-yellow-400'}`}>
+            {isLoading ? 'Processing...' : (isRegister ? 'Sign Up' : 'Login')}
           </button>
         </form>
       )}

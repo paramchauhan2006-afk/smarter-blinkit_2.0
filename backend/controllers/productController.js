@@ -6,8 +6,14 @@ const { getNeo4jSession } = require('../config/db');
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000';
 
 exports.searchProducts = async (req, res) => {
-  const { query, lat, lng } = req.query;
+  let { query, lat, lng } = req.query;
   if (!query) return res.status(400).json({ message: 'Query is required' });
+
+  // Fallback to default coordinates (e.g., Jaipur/MNIT area) if missing
+  if (!lat || !lng) {
+    lat = 26.8631;
+    lng = 75.8105;
+  }
 
   try {
     // 1. Get embedding
@@ -31,23 +37,19 @@ exports.searchProducts = async (req, res) => {
     }
 
     // 3. Query MongoDB with GeoNear if lat/lng are provided
-    let stores = [];
-    if (lat && lng) {
-      stores = await Store.aggregate([
-        {
-          $geoNear: {
-            near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-            distanceField: 'distance',
-            spherical: true
-          }
-        },
-        {
-          $match: { 'inventory.productId': { $in: matchedProductIds } }
+    // 3. Query MongoDB with GeoNear using provided or fallback coordinates
+    let stores = await Store.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+          distanceField: 'distance',
+          spherical: true
         }
-      ]);
-    } else {
-      stores = await Store.find({ 'inventory.productId': { $in: matchedProductIds } });
-    }
+      },
+      {
+        $match: { 'inventory.productId': { $in: matchedProductIds } }
+      }
+    ]);
 
     // Combine store distance info with product info
     const finalProducts = [];

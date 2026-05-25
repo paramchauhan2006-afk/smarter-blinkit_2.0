@@ -5,8 +5,14 @@ const axios = require('axios');
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000';
 
 exports.buildRecipeCart = async (req, res) => {
-  const { prompt, lat, lng } = req.body;
-  if (!prompt || !lat || !lng) return res.status(400).json({ message: 'Prompt and location required' });
+  let { prompt, lat, lng } = req.body;
+  if (!prompt) return res.status(400).json({ message: 'Prompt is required' });
+
+  // Fallback to default coordinates (e.g., Jaipur/MNIT area) if missing
+  if (!lat || !lng) {
+    lat = 26.8631;
+    lng = 75.8105;
+  }
 
   try {
     const aiResponse = await axios.post(`${FASTAPI_URL}/api/ai/recipe`, { prompt });

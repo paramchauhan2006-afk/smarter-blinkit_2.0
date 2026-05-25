@@ -20,6 +20,8 @@ const SellerDashboard = () => {
   const [aiPredictions, setAiPredictions] = useState([]);
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [scannedProductName, setScannedProductName] = useState('');
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
 
   const mockStoreId = "60d5ecb8b487343568912345";
 
@@ -56,12 +58,15 @@ const SellerDashboard = () => {
   }, []);
 
   const fetchLeaderboard = async () => {
+    setLeaderboardLoading(true);
     try {
       const res = await axios.get('http://localhost:5000/api/products/leaderboard');
       setLeaderboard(res.data);
     } catch (err) {
       console.error(err);
+      // Optional: set some error state or fallback
     }
+    setLeaderboardLoading(false);
   };
 
   const fetchMoneyMap = async () => {
@@ -98,6 +103,7 @@ const SellerDashboard = () => {
 
   const updateInventory = async (barcode) => {
     if (!barcode) return;
+    setInventoryLoading(true);
     try {
       const res = await axios.post('http://localhost:5000/api/inventory/barcode', {
         barcode,
@@ -114,6 +120,7 @@ const SellerDashboard = () => {
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to update inventory.');
     }
+    setInventoryLoading(false);
   };
 
   const fetchPairings = async (productId) => {
@@ -223,8 +230,8 @@ const SellerDashboard = () => {
                 onChange={(e) => setManualBarcode(e.target.value)}
                 className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:outline-none transition-all"
               />
-              <button type="submit" className="bg-primary px-6 py-3 rounded-lg font-bold shadow-sm hover:bg-yellow-400 transition-colors">
-                Add Stock
+              <button type="submit" disabled={inventoryLoading} className={`bg-primary px-6 py-3 rounded-lg font-bold shadow-sm hover:bg-yellow-400 transition-colors ${inventoryLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                {inventoryLoading ? 'Adding...' : 'Add Stock'}
               </button>
             </form>
           </div>
@@ -316,8 +323,10 @@ const SellerDashboard = () => {
           <h3 className="text-xl font-bold mb-4 border-b pb-2">Global Leaderboard</h3>
           <div className="mb-4">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Fastest Selling Items</p>
-            {leaderboard.products.length === 0 ? (
+            {leaderboardLoading ? (
               <div className="flex justify-center p-2"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div></div>
+            ) : leaderboard.products.length === 0 ? (
+              <p className="text-sm text-gray-500 italic p-2">No product data available.</p>
             ) : (
               <ul className="space-y-2">
                 {leaderboard.products.map((p, i) => (
@@ -331,8 +340,10 @@ const SellerDashboard = () => {
           </div>
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Top Rated Shops</p>
-            {leaderboard.stores.length === 0 ? (
+            {leaderboardLoading ? (
               <div className="flex justify-center p-2"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div></div>
+            ) : leaderboard.stores.length === 0 ? (
+              <p className="text-sm text-gray-500 italic p-2">No store data available.</p>
             ) : (
               <ul className="space-y-2">
                 {leaderboard.stores.map((s, i) => (
