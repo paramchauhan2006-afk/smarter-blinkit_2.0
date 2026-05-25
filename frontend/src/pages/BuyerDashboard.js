@@ -67,6 +67,13 @@ const BuyerDashboard = () => {
   const [newAddrDetails, setNewAddrDetails] = useState('');
   const [newAddrLat, setNewAddrLat] = useState('26.8631');
   const [newAddrLng, setNewAddrLng] = useState('75.8105');
+  const [fetchingGeo, setFetchingGeo] = useState(false);
+
+  // Shop categories & reverse-geocode locality states
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [geoLocality, setGeoLocality] = useState(() => {
+    return localStorage.getItem('geo_locality') || 'MNIT Area, Jaipur';
+  });
 
   // Checkout Modal State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
@@ -83,6 +90,57 @@ const BuyerDashboard = () => {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const reverseGeocode = async (lat, lng, label = null) => {
+    try {
+      const res = await axios.get(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+      const locality = res.data.locality || res.data.city || res.data.principalSubdivision || 'Jaipur';
+      const city = res.data.city || 'Jaipur';
+      const formatted = label ? `${label} (${locality}, ${city})` : `${locality}, ${city}`;
+      setGeoLocality(formatted);
+      localStorage.setItem('geo_locality', formatted);
+    } catch (err) {
+      console.error('Reverse geocoding error:', err);
+      if (label) {
+        setGeoLocality(label);
+        localStorage.setItem('geo_locality', label);
+      }
+    }
+  };
+
+  const fetchDeviceLocation = () => {
+    if (!navigator.geolocation) {
+      return showToast('Geolocation is not supported by your browser.', 'error');
+    }
+    setFetchingGeo(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setNewAddrLat(lat.toFixed(6));
+        setNewAddrLng(lng.toFixed(6));
+        
+        try {
+          const res = await axios.get(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+          const locality = res.data.locality || res.data.city || res.data.principalSubdivision || 'Unknown Area';
+          const city = res.data.city || '';
+          const nameStr = city ? `${locality}, ${city}` : locality;
+          setNewAddrDetails(res.data.locality || 'Current Location');
+          setNewAddrLabel(nameStr);
+          showToast('Device location fetched and reverse geocoded!', 'success');
+        } catch (err) {
+          showToast('Fetched coordinates, but reverse geocode failed.', 'warning');
+        }
+        setFetchingGeo(false);
+      },
+      (error) => {
+        console.error(error);
+        showToast('Failed to retrieve device location.', 'error');
+        setFetchingGeo(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
@@ -93,6 +151,7 @@ const BuyerDashboard = () => {
     const activeAddr = savedAddresses.find(a => a.active);
     if (activeAddr) {
       setLocation({ lat: activeAddr.lat, lng: activeAddr.lng });
+      reverseGeocode(activeAddr.lat, activeAddr.lng, activeAddr.name);
     }
     
     return () => {
@@ -116,6 +175,7 @@ const BuyerDashboard = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setProducts(res.data);
+      setSelectedCategory('All');
       
       // Update recent searches
       if (!recentSearches.includes(activeQuery)) {
@@ -160,32 +220,58 @@ const BuyerDashboard = () => {
   };
 
   const addToCart = (productObj) => {
-    setCart([...cart, productObj]);
+    setCart(prev => {
+      const idx = prev.findIndex(item => item.product._id === productObj.product._id && item.store.id === productObj.store.id);
+      if (idx > -1) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], quantity: (copy[idx].quantity || 1) + 1 };
+        return copy;
+      }
+      return [...prev, { ...productObj, quantity: 1 }];
+    });
     showToast(`Added ${productObj.product.name} to cart!`, 'success');
   };
 
   const addRecipeItemToCart = (item) => {
-    const itemsToAdd = Array(item.quantity).fill(null).map(() => ({
-      product: item.product,
-      store: item.store
-    }));
-    setCart(prev => [...prev, ...itemsToAdd]);
+    setCart(prev => {
+      const idx = prev.findIndex(c => c.product._id === item.product._id && c.store.id === item.store.id);
+      if (idx > -1) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], quantity: (copy[idx].quantity || 0) + item.quantity };
+        return copy;
+      }
+      return [...prev, { product: item.product, store: item.store, quantity: item.quantity }];
+    });
     showToast(`Added ${item.quantity} x ${item.product.name} to cart!`, 'success');
   };
 
   const addAllRecipeItemsToCart = () => {
-    let itemsToAdd = [];
-    recipeResults.forEach(item => {
-      for (let i = 0; i < item.quantity; i++) {
-        itemsToAdd.push({
-          product: item.product,
-          store: item.store
-        });
-      }
+    setCart(prev => {
+      let copy = [...prev];
+      recipeResults.forEach(item => {
+        const idx = copy.findIndex(c => c.product._id === item.product._id && c.store.id === item.store.id);
+        if (idx > -1) {
+          copy[idx] = { ...copy[idx], quantity: (copy[idx].quantity || 0) + item.quantity };
+        } else {
+          copy.push({ product: item.product, store: item.store, quantity: item.quantity });
+        }
+      });
+      return copy;
     });
-    setCart(prev => [...prev, ...itemsToAdd]);
-    showToast(`Added all ${itemsToAdd.length} recipe items to cart!`, 'success');
+    showToast(`Added all ${recipeResults.length} recipe items to cart!`, 'success');
     setRecipeResults([]);
+  };
+
+  const updateCartItemQuantity = (productId, storeId, delta) => {
+    setCart(prev => {
+      return prev.map(item => {
+        if (item.product._id === productId && item.store.id === storeId) {
+          const newQty = (item.quantity || 1) + delta;
+          return { ...item, quantity: newQty };
+        }
+        return item;
+      }).filter(item => item.quantity > 0);
+    });
   };
 
   const handleLogout = () => {
@@ -206,6 +292,7 @@ const BuyerDashboard = () => {
     const updated = savedAddresses.map(a => {
       if (a.id === addrId) {
         setLocation({ lat: a.lat, lng: a.lng });
+        reverseGeocode(a.lat, a.lng, a.name);
         showToast(`Delivery location updated to: ${a.name}`, 'success');
         return { ...a, active: true };
       }
@@ -213,6 +300,26 @@ const BuyerDashboard = () => {
     });
     setSavedAddresses(updated);
     localStorage.setItem('saved_addresses', JSON.stringify(updated));
+  };
+
+  const getFilteredProducts = () => {
+    if (selectedCategory === 'All') return products;
+    return products.filter(item => {
+      const cat = (item.product.category || '').toLowerCase();
+      if (selectedCategory === 'Dairy') {
+        return cat === 'dairy';
+      }
+      if (selectedCategory === 'Snacks') {
+        return cat === 'snacks';
+      }
+      if (selectedCategory === 'Wellness') {
+        return cat === 'wellness';
+      }
+      if (selectedCategory === 'Recipes') {
+        return !['dairy', 'snacks', 'wellness'].includes(cat);
+      }
+      return true;
+    });
   };
 
   const handleAddAddress = (e) => {
@@ -252,7 +359,7 @@ const BuyerDashboard = () => {
 
   const handlePlaceOrder = async () => {
     if (cart.length === 0) return showToast('Cart is empty!', 'error');
-    const amount = cart.reduce((total, item) => total + item.product.price, 0);
+    const amount = cart.reduce((total, item) => total + (item.product.price * (item.quantity || 1)), 0);
 
     setCheckoutStep('processing');
     
@@ -288,7 +395,7 @@ const BuyerDashboard = () => {
               items: cart.map(item => ({
                 name: item.product.name,
                 price: item.product.price,
-                quantity: 1
+                quantity: item.quantity || 1
               }))
             };
 
@@ -347,7 +454,7 @@ const BuyerDashboard = () => {
                 items: cart.map(item => ({
                   name: item.product.name,
                   price: item.product.price,
-                  quantity: 1
+                  quantity: item.quantity || 1
                 }))
               };
 
@@ -462,9 +569,9 @@ const BuyerDashboard = () => {
         
         <div className="flex items-center gap-4">
           <div className="text-right hidden xl:block">
-            <p className="text-xs font-semibold text-gray-400">GEOLOCATION STATUS</p>
+            <p className="text-xs font-semibold text-gray-400">DELIVERING TO</p>
             <p className="text-xs font-bold text-green-600">
-              {location ? `📍 Cluster Active (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)})` : '🔍 Fetching location...'}
+              📍 {geoLocality}
             </p>
           </div>
           <button 
@@ -564,9 +671,46 @@ const BuyerDashboard = () => {
                 {location && <p className="text-sm text-green-600 mt-2 font-medium">✓ Location active for nearest delivery optimization</p>}
               </div>
 
+              {/* Category Badges Grid */}
+              {products.length > 0 && (
+                <div className="mb-6 flex gap-3 flex-wrap items-center bg-gray-50/50 p-3 rounded-xl border border-gray-100 animate-fade-in">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest mr-1">Categories:</span>
+                  <button 
+                    onClick={() => setSelectedCategory('All')}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow-sm active:scale-95 flex items-center gap-1 ${selectedCategory === 'All' ? 'bg-secondary text-white border-none' : 'bg-white border border-gray-200 text-secondary hover:bg-gray-100'}`}
+                  >
+                    ⚡ All Products
+                  </button>
+                  <button 
+                    onClick={() => setSelectedCategory('Dairy')}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow-sm active:scale-95 flex items-center gap-1 ${selectedCategory === 'Dairy' ? 'bg-secondary text-white border-none' : 'bg-white border border-gray-200 text-secondary hover:bg-gray-100'}`}
+                  >
+                    🥛 Dairy
+                  </button>
+                  <button 
+                    onClick={() => setSelectedCategory('Snacks')}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow-sm active:scale-95 flex items-center gap-1 ${selectedCategory === 'Snacks' ? 'bg-secondary text-white border-none' : 'bg-white border border-gray-200 text-secondary hover:bg-gray-100'}`}
+                  >
+                    🍿 Snacks
+                  </button>
+                  <button 
+                    onClick={() => setSelectedCategory('Wellness')}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow-sm active:scale-95 flex items-center gap-1 ${selectedCategory === 'Wellness' ? 'bg-secondary text-white border-none' : 'bg-white border border-gray-200 text-secondary hover:bg-gray-100'}`}
+                  >
+                    💊 Wellness
+                  </button>
+                  <button 
+                    onClick={() => setSelectedCategory('Recipes')}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow-sm active:scale-95 flex items-center gap-1 ${selectedCategory === 'Recipes' ? 'bg-secondary text-white border-none' : 'bg-white border border-gray-200 text-secondary hover:bg-gray-100'}`}
+                  >
+                    🍕 Recipes
+                  </button>
+                </div>
+              )}
+
               {/* Products Display Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {products.map((item, idx) => (
+                {getFilteredProducts().map((item, idx) => (
                   <div key={idx} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all">
                     <div 
                       className="h-40 bg-gray-50 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors"
@@ -769,7 +913,7 @@ const BuyerDashboard = () => {
         {/* Right Cart Sidebar */}
         <div className="w-full lg:w-80 bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit sticky top-24">
           <h3 className="text-xl font-bold mb-4 border-b pb-2 flex justify-between items-center">
-            Your Cart <span className="text-primary bg-yellow-100 px-2 py-1 rounded-md text-sm">{cart.length}</span>
+            Your Cart <span className="text-primary bg-yellow-100 px-2 py-1 rounded-md text-sm">{cart.reduce((t, i) => t + (i.quantity || 1), 0)}</span>
           </h3>
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-gray-400">
@@ -780,15 +924,31 @@ const BuyerDashboard = () => {
             <div className="space-y-4">
               <div className="max-h-60 overflow-y-auto pr-2 space-y-3">
                 {cart.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-sm items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
-                    <span className="font-medium truncate mr-2">{item.product.name}</span>
-                    <span className="font-bold text-secondary">₹{item.product.price}</span>
+                  <div key={idx} className="flex justify-between text-sm items-center bg-gray-50 p-2.5 rounded-lg border border-gray-100 gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-secondary truncate">{item.product.name}</p>
+                      <p className="text-xs text-gray-500 font-semibold">₹{item.product.price} each</p>
+                    </div>
+                    <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                      <button 
+                        onClick={() => updateCartItemQuantity(item.product._id, item.store.id, -1)}
+                        className="px-2.5 py-0.5 text-rose-500 font-black hover:bg-rose-50 active:bg-rose-100 transition-colors"
+                      >-</button>
+                      <span className="px-2 text-xs font-black text-secondary">{item.quantity || 1}</span>
+                      <button 
+                        onClick={() => updateCartItemQuantity(item.product._id, item.store.id, 1)}
+                        className="px-2.5 py-0.5 text-green-600 font-black hover:bg-green-50 active:bg-green-100 transition-colors"
+                      >+</button>
+                    </div>
+                    <div className="text-right font-black text-secondary min-w-[50px]">
+                      ₹{item.product.price * (item.quantity || 1)}
+                    </div>
                   </div>
                 ))}
               </div>
               <div className="border-t pt-4 flex justify-between font-bold text-lg">
                 <span>Total Amount</span>
-                <span className="text-secondary">₹{cart.reduce((t, i) => t + i.product.price, 0)}</span>
+                <span className="text-secondary">₹{cart.reduce((t, i) => t + (i.product.price * (i.quantity || 1)), 0)}</span>
               </div>
               <button 
                 onClick={() => {
@@ -820,8 +980,8 @@ const BuyerDashboard = () => {
                 <div className="space-y-3 max-h-48 overflow-y-auto pr-1 mb-4">
                   {cart.map((item, idx) => (
                     <div key={idx} className="flex justify-between text-sm text-gray-600 font-medium">
-                      <span>{item.product.name}</span>
-                      <span className="font-bold text-secondary">₹{item.product.price}</span>
+                      <span>{item.product.name} <span className="text-gray-400 font-bold">x{item.quantity || 1}</span></span>
+                      <span className="font-bold text-secondary">₹{item.product.price * (item.quantity || 1)}</span>
                     </div>
                   ))}
                 </div>
@@ -833,7 +993,7 @@ const BuyerDashboard = () => {
 
                 <div className="border-t border-b py-3 mb-6 flex justify-between font-black text-lg text-secondary">
                   <span>Grand Total</span>
-                  <span>₹{cart.reduce((t, i) => t + i.product.price, 0)}</span>
+                  <span>₹{cart.reduce((t, i) => t + (i.product.price * (i.quantity || 1)), 0)}</span>
                 </div>
 
                 <div className="mb-6">
@@ -858,7 +1018,7 @@ const BuyerDashboard = () => {
                   onClick={handlePlaceOrder}
                   className="w-full bg-secondary text-white py-3 rounded-xl font-bold hover:bg-accent transition-colors shadow-md"
                 >
-                  Place Order (₹{cart.reduce((t, i) => t + i.product.price, 0)})
+                  Place Order (₹{cart.reduce((t, i) => t + (i.product.price * (i.quantity || 1)), 0)})
                 </button>
               </>
             )}
@@ -910,6 +1070,14 @@ const BuyerDashboard = () => {
             </div>
             
             <form onSubmit={handleAddAddress} className="space-y-4">
+              <button 
+                type="button"
+                onClick={fetchDeviceLocation}
+                disabled={fetchingGeo}
+                className="w-full bg-gray-50 hover:bg-gray-100 text-secondary border border-gray-200 py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+              >
+                {fetchingGeo ? '⏳ Fetching coordinates...' : '📍 Fetch Current Location'}
+              </button>
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Address Label</label>
                 <input 

@@ -35,7 +35,16 @@ const productsToSeed = [
   { name: "Tea Leaves", description: "Aromatic black tea leaves blend", price: 120, category: "beverages", barcode: "BARCODE-TEA-114" },
   { name: "Coffee Beans", description: "Medium roast coffee beans", price: 250, category: "beverages", barcode: "BARCODE-COFFEE-115" },
   { name: "Milk", description: "Fresh whole pasteurized milk bottle", price: 60, category: "dairy", barcode: "BARCODE-MILK-116" },
-  { name: "Sugar", description: "Fine granulated white sugar pack", price: 40, category: "pantry", barcode: "BARCODE-SUGAR-117" }
+  { name: "Sugar", description: "Fine granulated white sugar pack", price: 40, category: "pantry", barcode: "BARCODE-SUGAR-117" },
+  { name: "Paracetamol (500mg)", description: "Effective pain reliever and fever reducer for cold, flu, and fever symptoms", price: 20, category: "Wellness", barcode: "BARCODE-PARA-201" },
+  { name: "Cough Syrup", description: "Soothes throat irritation and relieves cough and congestion from cold or ill health", price: 65, category: "Wellness", barcode: "BARCODE-COUGH-202" },
+  { name: "Vitamin C", description: "Chewable daily immune booster supplements to fight off cold and keep ill health at bay", price: 90, category: "Wellness", barcode: "BARCODE-VITC-203" },
+  { name: "Potato Chips", description: "Crispy salted potato chips perfect for snacks and munchies cravings", price: 30, category: "Snacks", barcode: "BARCODE-CHIPS-204" },
+  { name: "Cheddar Crackers", description: "Baked cheese biscuits for satisfying snacks and munchies hunger", price: 40, category: "Snacks", barcode: "BARCODE-CRACKER-205" },
+  { name: "Chocolate Bar", description: "Rich dairy milk chocolate bar for sweet snacks and munchies lovers", price: 50, category: "Snacks", barcode: "BARCODE-CHOCO-206" },
+  { name: "Fresh Milk", description: "Pure fresh pasteurized dairy milk bottle", price: 60, category: "Dairy", barcode: "BARCODE-MILK-207" },
+  { name: "Salted Butter", description: "Creamy rich salted dairy butter spread", price: 75, category: "Dairy", barcode: "BARCODE-BUTTER-208" },
+  { name: "Brown Bread", description: "Freshly baked high fiber wheat brown bread loaf", price: 45, category: "Dairy", barcode: "BARCODE-BREAD-209" }
 ];
 
 async function seed() {
@@ -178,9 +187,9 @@ async function seed() {
       rating: 4.8
     });
 
-    // Store 2: carries only a subset (dairy, produce, beverages) with lower stock
+    // Store 2: carries only a subset (dairy, produce, beverages, Wellness, Snacks, Dairy) with lower stock
     const store2Inventory = seededProducts
-      .filter(p => ["dairy", "produce", "beverages"].includes(p.category))
+      .filter(p => ["dairy", "produce", "beverages", "Wellness", "Snacks", "Dairy"].includes(p.category))
       .map((p, idx) => ({
         productId: p._id,
         barcode: p.barcode,
